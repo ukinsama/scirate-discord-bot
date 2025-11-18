@@ -1,0 +1,1 @@
+# scirate-discord-bot
