@@ -1,0 +1,33 @@
+name: Scirate Discord Bot
+
+  on:
+    schedule:
+      # 毎日午前9時（日本時間）= 毎日午前0時（UTC）
+      - cron: '0 0 * * *'
+
+    # 手動実行も可能にする
+    workflow_dispatch:
+
+  jobs:
+    run-bot:
+      runs-on: ubuntu-latest
+
+      steps:
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v3
+
+      - name: Pythonをセットアップ
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: 依存関係をインストール
+        run: |
+          pip install requests beautifulsoup4
+
+      - name: Scirate Botを実行
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          python scirate_discord_bot.py
