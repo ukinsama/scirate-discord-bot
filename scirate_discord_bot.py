@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Scirate Discord Bot (完全版)
+Scirate Discord Bot (Gemini API版)
 Scirateのquant-phトップページから、scites数上位10件の論文をAI要約付きでDiscordに投稿
 
 使い方:
-1. 必要なパッケージをインストール: pip install requests beautifulsoup4
+1. 必要なパッケージをインストール: pip install requests beautifulsoup4 google-generativeai
 2. このスクリプトを実行: python scirate_discord_bot.py
 """
 
@@ -16,14 +16,19 @@ import time
 from typing import List, Dict
 import re
 import os
+import google.generativeai as genai
 
 # ===== 設定（ここを編集してください） =====
 # 環境変数から取得（GitHub Actions用）、なければデフォルト値を使用
 DISCORD_WEBHOOK_URL = os.environ.get('DISCORD_WEBHOOK_URL', "https://discordapp.com/api/webhooks/1440300959053119538/uMebZxptK0QGMDrGnicpomGxeil_dSUofXY_H10bUdst1utNlPaAI1rHeTEfCXf1ki7s")
-ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', "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")
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', "AIzaSyDZMEKLZTBDZJHYeFCs2PDSG-_i-hEwMao")  # Gemini APIキーを設定
 ARXIV_CATEGORY = "quant-ph"  # カテゴリ (quant-ph, cs.AI, cs.LG など)
 TOP_N_PAPERS = 10  # 投稿する論文数
 SUMMARY_LANGUAGE = "ja"  # 要約言語 (ja=日本語, en=英語)
+
+# Gemini APIを初期化
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
 
 
 # ===== Scirateトップページから論文を取得 =====
@@ -207,25 +212,29 @@ def enrich_papers_with_abstracts(papers: List[Dict]) -> List[Dict]:
     return papers
 
 
-# ===== Claude APIで要約を生成 =====
+# ===== Google Gemini APIで要約を生成 =====
 def generate_summary(title: str, abstract: str, language: str = "ja") -> str:
     """
-    Claude APIを使って論文を2-3文で要約
+    Google Gemini APIを使って論文を2-3文で要約
     """
     print(f"🤖 要約生成中: {title[:40]}...")
     
     if not abstract:
         return "Abstractが取得できませんでした。"
     
-    url = "https://api.anthropic.com/v1/messages"
-    headers = {
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json"
-    }
+    if not GEMINI_API_KEY:
+        return "Gemini APIキーが設定されていません。"
     
     if language == "ja":
-        prompt = f"""以下の論文を2-3文の日本語で簡潔に要約してください。専門用語は残しつつ、何を研究したかが分かるように説明してください。
+        prompt = f"""以下の論文を2-3文の日本語で簡潔に要約してください。
+
+【重要な指示】
+- 専門用語は残しつつ、何を研究したかが分かるように説明してください
+- 数式はLaTeXではなく、Discordで読める形式で表記してください
+  例: μ_c², P_{{11→11}}(E), Δt(E), φ⁴, ⟨ψ|H|ψ⟩
+- 具体的な数値（パラメータ値、精度、誤差など）があれば正確に含めてください
+- ギリシャ文字はそのまま使用: α, β, γ, δ, ε, θ, λ, μ, ν, π, σ, φ, ψ, ω
+- 上付き・下付き文字: ₀₁₂₃₄₅₆₇₈₉, ⁰¹²³⁴⁵⁶⁷⁸⁹
 
 タイトル: {title}
 
@@ -241,24 +250,14 @@ Abstract: {abstract}
 
 Summary:"""
     
-    data = {
-        "model": "claude-sonnet-4-20250514",
-        "max_tokens": 300,
-        "messages": [
-            {"role": "user", "content": prompt}
-        ]
-    }
-    
     try:
-        response = requests.post(url, headers=headers, json=data, timeout=30)
+        # Gemini 2.0 Flashモデルを使用（無料枠）
+        model = genai.GenerativeModel('gemini-2.0-flash')
+        response = model.generate_content(prompt)
         
-        if response.status_code == 200:
-            result = response.json()
-            summary = result['content'][0]['text'].strip()
-            return summary
-        else:
-            print(f"⚠️ 要約生成エラー (status: {response.status_code})")
-            return "要約の生成に失敗しました。"
+        # テキストを取得
+        summary = response.text.strip()
+        return summary
     
     except Exception as e:
         print(f"⚠️ 要約生成エラー: {e}")
@@ -346,7 +345,7 @@ def post_to_discord(papers: List[Dict], language: str = "ja"):
 # ===== メイン処理 =====
 def main():
     print("=" * 60)
-    print("🚀 Scirate Discord Bot 起動")
+    print("🚀 Scirate Discord Bot 起動 (Gemini API版)")
     print("=" * 60)
     
     # 1. Scirateトップページから論文を取得
