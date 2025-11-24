@@ -21,7 +21,7 @@ import google.generativeai as genai
 # ===== 設定（ここを編集してください） =====
 # 環境変数から取得（GitHub Actions用）、なければデフォルト値を使用
 DISCORD_WEBHOOK_URL = os.environ.get('DISCORD_WEBHOOK_URL', "https://discordapp.com/api/webhooks/1440300959053119538/uMebZxptK0QGMDrGnicpomGxeil_dSUofXY_H10bUdst1utNlPaAI1rHeTEfCXf1ki7s")
-GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', "AIzaSyDZMEKLZTBDZJHYeFCs2PDSG-_i-hEwMao")  # Gemini APIキーを設定
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', "")  # Gemini APIキーを設定(空じゃないとだめ）
 ARXIV_CATEGORY = "quant-ph"  # カテゴリ (quant-ph, cs.AI, cs.LG など)
 TOP_N_PAPERS = 10  # 投稿する論文数
 SUMMARY_LANGUAGE = "ja"  # 要約言語 (ja=日本語, en=英語)
