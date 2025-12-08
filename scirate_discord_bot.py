@@ -182,7 +182,7 @@ def enrich_papers_with_abstracts(papers: List[Dict]) -> List[Dict]:
                 ns = {'atom': 'http://www.w3.org/2005/Atom'}
                 
                 entry = root.find('atom:entry', ns)
-                if entry:
+                if entry is not None:
                     # Abstract
                     abstract_elem = entry.find('atom:summary', ns)
                     if abstract_elem is not None:
@@ -251,16 +251,46 @@ Abstract: {abstract}
 Summary:"""
     
     try:
-        # Gemini 2.0 Flashモデルを使用（無料枠）
-        model = genai.GenerativeModel('gemini-2.0-flash')
+        # Gemini 2.5 Flashモデルを使用（無料枠）
+        model = genai.GenerativeModel('gemini-2.5-flash')
         response = model.generate_content(prompt)
-        
+
+        # レスポンスの詳細をログに出力
+        print(f"   Gemini response candidates: {len(response.candidates) if response.candidates else 0}")
+
+        # 安全性フィルタでブロックされたかチェック
+        if not response.candidates:
+            print(f"   ⚠️ No candidates in response")
+            if hasattr(response, 'prompt_feedback'):
+                print(f"   Prompt feedback: {response.prompt_feedback}")
+            return "要約の生成に失敗しました（応答なし）。"
+
+        candidate = response.candidates[0]
+
+        # finish_reasonをチェック
+        if hasattr(candidate, 'finish_reason'):
+            print(f"   Finish reason: {candidate.finish_reason}")
+            # SAFETY=3 でブロックされた場合
+            if candidate.finish_reason == 3:
+                print(f"   ⚠️ Blocked by safety filter")
+                return "要約の生成に失敗しました（安全性フィルタ）。"
+
         # テキストを取得
-        summary = response.text.strip()
-        return summary
-    
+        if hasattr(response, 'text') and response.text:
+            summary = response.text.strip()
+            if summary:
+                return summary
+            else:
+                print(f"   ⚠️ Empty text in response")
+                return "要約の生成に失敗しました（空の応答）。"
+        else:
+            print(f"   ⚠️ No text attribute in response")
+            return "要約の生成に失敗しました（テキストなし）。"
+
     except Exception as e:
         print(f"⚠️ 要約生成エラー: {e}")
+        import traceback
+        traceback.print_exc()
         return "要約の生成に失敗しました。"
 
 
