@@ -23,7 +23,7 @@ import google.generativeai as genai
 DISCORD_WEBHOOK_URL = os.environ.get('DISCORD_WEBHOOK_URL', "")
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', "")  # Gemini APIキーを設定(空じゃないとだめ）
 ARXIV_CATEGORY = "quant-ph"  # カテゴリ (quant-ph, cs.AI, cs.LG など)
-TOP_N_PAPERS = 10  # 投稿する論文数
+TOP_N_PAPERS = 8  # 投稿する論文数
 SUMMARY_LANGUAGE = "ja"  # 要約言語 (ja=日本語, en=英語)
 
 # Gemini APIを初期化
