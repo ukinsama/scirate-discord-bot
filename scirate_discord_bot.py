@@ -250,48 +250,66 @@ Abstract: {abstract}
 
 Summary:"""
     
-    try:
-        # Gemini 2.5 Flashモデルを使用（無料枠）
-        model = genai.GenerativeModel('gemini-2.5-flash')
-        response = model.generate_content(prompt)
+    # 複数のモデルを試す（クォータ超過時のフォールバック）
+    models_to_try = [
+        'gemini-2.5-flash',
+        'gemini-2.0-flash',
+        'gemini-2.0-flash-lite',
+    ]
 
-        # レスポンスの詳細をログに出力
-        print(f"   Gemini response candidates: {len(response.candidates) if response.candidates else 0}")
+    for model_name in models_to_try:
+        try:
+            print(f"   Using model: {model_name}")
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(prompt)
 
-        # 安全性フィルタでブロックされたかチェック
-        if not response.candidates:
-            print(f"   ⚠️ No candidates in response")
-            if hasattr(response, 'prompt_feedback'):
-                print(f"   Prompt feedback: {response.prompt_feedback}")
-            return "要約の生成に失敗しました（応答なし）。"
+            # レスポンスの詳細をログに出力
+            print(f"   Gemini response candidates: {len(response.candidates) if response.candidates else 0}")
 
-        candidate = response.candidates[0]
+            # 安全性フィルタでブロックされたかチェック
+            if not response.candidates:
+                print(f"   ⚠️ No candidates in response")
+                if hasattr(response, 'prompt_feedback'):
+                    print(f"   Prompt feedback: {response.prompt_feedback}")
+                return "要約の生成に失敗しました（応答なし）。"
 
-        # finish_reasonをチェック
-        if hasattr(candidate, 'finish_reason'):
-            print(f"   Finish reason: {candidate.finish_reason}")
-            # SAFETY=3 でブロックされた場合
-            if candidate.finish_reason == 3:
-                print(f"   ⚠️ Blocked by safety filter")
-                return "要約の生成に失敗しました（安全性フィルタ）。"
+            candidate = response.candidates[0]
 
-        # テキストを取得
-        if hasattr(response, 'text') and response.text:
-            summary = response.text.strip()
-            if summary:
-                return summary
+            # finish_reasonをチェック
+            if hasattr(candidate, 'finish_reason'):
+                print(f"   Finish reason: {candidate.finish_reason}")
+                # SAFETY=3 でブロックされた場合
+                if candidate.finish_reason == 3:
+                    print(f"   ⚠️ Blocked by safety filter")
+                    return "要約の生成に失敗しました（安全性フィルタ）。"
+
+            # テキストを取得
+            if hasattr(response, 'text') and response.text:
+                summary = response.text.strip()
+                if summary:
+                    return summary
+                else:
+                    print(f"   ⚠️ Empty text in response")
+                    return "要約の生成に失敗しました（空の応答）。"
             else:
-                print(f"   ⚠️ Empty text in response")
-                return "要約の生成に失敗しました（空の応答）。"
-        else:
-            print(f"   ⚠️ No text attribute in response")
-            return "要約の生成に失敗しました（テキストなし）。"
+                print(f"   ⚠️ No text attribute in response")
+                return "要約の生成に失敗しました（テキストなし）。"
 
-    except Exception as e:
-        print(f"⚠️ 要約生成エラー: {e}")
-        import traceback
-        traceback.print_exc()
-        return "要約の生成に失敗しました。"
+        except Exception as e:
+            error_str = str(e)
+            # クォータ超過エラーの場合は次のモデルを試す
+            if '429' in error_str or 'quota' in error_str.lower():
+                print(f"   ⚠️ {model_name} クォータ超過、次のモデルを試します...")
+                continue
+            else:
+                print(f"⚠️ 要約生成エラー: {e}")
+                import traceback
+                traceback.print_exc()
+                return "要約の生成に失敗しました。"
+
+    # すべてのモデルが失敗した場合
+    print("⚠️ すべてのモデルでクォータ超過")
+    return "要約の生成に失敗しました（全モデルでクォータ超過）。"
 
 
 # ===== Discordに投稿 =====
