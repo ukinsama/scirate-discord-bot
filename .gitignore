@@ -1,0 +1,7 @@
+
+# Local test files
+__pycache__/
+cache/
+*.log
+test_local.py
+scirate_discord_bot_original.py

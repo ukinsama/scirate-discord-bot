@@ -25,9 +25,29 @@ jobs:
       run: |
         pip install requests beautifulsoup4 google-generativeai
 
+    # キャッシュディレクトリを復元（API呼び出し削減）
+    - name: キャッシュを復元
+      uses: actions/cache@v3
+      with:
+        path: cache
+        key: scirate-cache-${{ github.run_number }}
+        restore-keys: |
+          scirate-cache-
+
     - name: Scirate Botを実行
       env:
         DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       run: |
         python scirate_discord_bot.py
+
+    # ログファイルをアーティファクトとして保存
+    - name: ログを保存
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: bot-logs
+        path: |
+          scirate_bot.log
+          cache/api_usage.json
+        retention-days: 7
