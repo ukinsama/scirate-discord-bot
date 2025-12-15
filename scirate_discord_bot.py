@@ -52,27 +52,22 @@ SUMMARY_LANGUAGE = "ja"  # 要約言語 (ja=日本語, en=英語)
 CACHE_DIR = Path("cache")
 CACHE_EXPIRY_HOURS = 24  # キャッシュの有効期限（時間）
 
-# モデル優先順位（RPM制限が緩い順）
+# モデル優先順位（RPD制限が緩い順）
 MODEL_PRIORITY = [
+    {
+        'name': 'gemma-3-27b',
+        'rpm': 30,
+        'description': 'Gemma 27B - RPD制限が最も緩い（14.4K/日）'
+    },
     {
         'name': 'gemini-2.5-flash-lite',
         'rpm': 10,
-        'description': 'Lite版 - RPM制限が緩い（推奨）'
+        'description': 'Lite版 - RPD制限が厳しい（20/日）'
     },
     {
         'name': 'gemini-2.5-flash',
         'rpm': 5,
-        'description': '標準版 - 高品質だがRPM制限が厳しい'
-    },
-    {
-        'name': 'gemma-3-27b',
-        'rpm': 30,
-        'description': 'Gemma - RPM制限が最も緩い（フォールバック用）'
-    },
-    {
-        'name': 'gemini-2.0-flash',
-        'rpm': 15,
-        'description': '旧版Flash - フォールバック用'
+        'description': '標準版 - RPD制限が厳しい（20/日）'
     },
 ]
 
