@@ -1,7 +1,15 @@
-
 # Local test files
 __pycache__/
 cache/
 *.log
 test_local.py
 scirate_discord_bot_original.py
+
+# Old local directory
+files/
+
+# Python
+*.py[cod]
+*$py.class
+venv/
+.env

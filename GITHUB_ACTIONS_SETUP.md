@@ -1,14 +1,14 @@
-# GitHub Actions セットアップガイド 🚀
+# GitHub Actions セットアップガイド
 
 毎朝9時（日本時間）にScirate Discord Botを自動実行する設定です。
 
-## 📋 必要なもの
+## 必要なもの
 
 1. **GitHubアカウント**（無料）
-2. **Discord Webhook URL**（設定済み✅）
-3. **Anthropic API Key**（設定済み✅）
+2. **Discord Webhook URL**
+3. **Google Gemini API Key**（無料枠あり）
 
-所要時間：**約10分**
+所要時間：約10分
 
 ---
 
@@ -82,12 +82,12 @@ jobs:
     
     - name: 依存関係をインストール
       run: |
-        pip install requests beautifulsoup4
-    
+        pip install requests beautifulsoup4 google-generativeai
+
     - name: Scirate Botを実行
       env:
         DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       run: |
         python scirate_discord_bot.py
 ```
@@ -125,13 +125,13 @@ git push -u origin main
 
 4. **1つ目のSecret**：
    - **Name**: `DISCORD_WEBHOOK_URL`
-   - **Secret**: `https://discordapp.com/api/webhooks/1440300959053119538/uMebZxptK0QGMDrGnicpomGxeil_dSUofXY_H10bUdst1utNlPaAI1rHeTEfCXf1ki7s`
+   - **Secret**: あなたのDiscord Webhook URL
    - 「Add secret」をクリック
 
 5. **2つ目のSecret**：
    - 「New repository secret」をクリック
-   - **Name**: `ANTHROPIC_API_KEY`
-   - **Secret**: `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`
+   - **Name**: `GEMINI_API_KEY`
+   - **Secret**: あなたのGoogle Gemini APIキー（https://aistudio.google.com/ で取得）
    - 「Add secret」をクリック
 
 ---
