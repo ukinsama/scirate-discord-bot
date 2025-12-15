@@ -1,53 +1,29 @@
-name: Scirate Discord Bot
 
-on:
-  schedule:
-    # 毎日午前9時（日本時間）= 毎日午前0時（UTC）
-    - cron: '45 23 * * 0-4'
+  name: Scirate Discord Bot
 
-  # 手動実行も可能にする
-  workflow_dispatch:
+  on:
+    schedule:
+      - cron: '45 23 * * 0-4'
+    workflow_dispatch:
 
-jobs:
-  run-bot:
-    runs-on: ubuntu-latest
+  jobs:
+    run-bot:
+      runs-on: ubuntu-latest
 
-    steps:
-    - name: リポジトリをチェックアウト
-      uses: actions/checkout@v3
+      steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Pythonをセットアップ
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
 
-    - name: 依存関係をインストール
-      run: |
-        pip install requests beautifulsoup4 google-generativeai
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4 google-generativeai
 
-    # キャッシュディレクトリを復元（API呼び出し削減）
-    - name: キャッシュを復元
-      uses: actions/cache@v3
-      with:
-        path: cache
-        key: scirate-cache-${{ github.run_number }}
-        restore-keys: |
-          scirate-cache-
-
-    - name: Scirate Botを実行
-      env:
-        DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      run: |
-        python scirate_discord_bot.py
-
-    # ログファイルをアーティファクトとして保存
-    - name: ログを保存
-      uses: actions/upload-artifact@v3
-      if: always()
-      with:
-        name: bot-logs
-        path: |
-          scirate_bot.log
-          cache/api_usage.json
-        retention-days: 7
+      - name: Run bot
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python scirate_discord_bot.py
