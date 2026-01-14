@@ -260,6 +260,124 @@ class APIUsageTracker:
 usage_tracker = APIUsageTracker()
 
 
+# ===== LaTeX→Unicode変換 =====
+def convert_latex_to_unicode(text: str) -> str:
+    """
+    LaTeX記法をUnicode文字に変換する
+    例: $alpha$ -> α, $Z^2$ -> Z², $psi_0$ -> ψ₀
+    """
+    # LaTeXコマンド→Unicode対応表
+    latex_to_unicode = {
+        # ギリシャ文字（小文字）
+        r'\alpha': 'α', r'\beta': 'β', r'\gamma': 'γ', r'\delta': 'δ',
+        r'\epsilon': 'ε', r'\varepsilon': 'ε', r'\zeta': 'ζ', r'\eta': 'η',
+        r'\theta': 'θ', r'\vartheta': 'ϑ', r'\iota': 'ι', r'\kappa': 'κ',
+        r'\lambda': 'λ', r'\mu': 'μ', r'\nu': 'ν', r'\xi': 'ξ',
+        r'\pi': 'π', r'\varpi': 'ϖ', r'\rho': 'ρ', r'\varrho': 'ϱ',
+        r'\sigma': 'σ', r'\varsigma': 'ς', r'\tau': 'τ', r'\upsilon': 'υ',
+        r'\phi': 'φ', r'\varphi': 'ϕ', r'\chi': 'χ', r'\psi': 'ψ', r'\omega': 'ω',
+        # ギリシャ文字（大文字）
+        r'\Gamma': 'Γ', r'\Delta': 'Δ', r'\Theta': 'Θ', r'\Lambda': 'Λ',
+        r'\Xi': 'Ξ', r'\Pi': 'Π', r'\Sigma': 'Σ', r'\Upsilon': 'Υ',
+        r'\Phi': 'Φ', r'\Psi': 'Ψ', r'\Omega': 'Ω',
+        # 数学記号
+        r'\times': '×', r'\div': '÷', r'\pm': '±', r'\mp': '∓',
+        r'\cdot': '·', r'\ast': '∗', r'\star': '☆',
+        r'\leq': '≤', r'\geq': '≥', r'\neq': '≠', r'\approx': '≈',
+        r'\equiv': '≡', r'\sim': '∼', r'\propto': '∝',
+        r'\infty': '∞', r'\partial': '∂', r'\nabla': '∇',
+        r'\sum': 'Σ', r'\prod': 'Π', r'\int': '∫',
+        r'\sqrt': '√', r'\hbar': 'ℏ', r'\ell': 'ℓ',
+        r'\rightarrow': '→', r'\leftarrow': '←', r'\leftrightarrow': '↔',
+        r'\Rightarrow': '⇒', r'\Leftarrow': '⇐', r'\Leftrightarrow': '⇔',
+        r'\uparrow': '↑', r'\downarrow': '↓',
+        r'\langle': '⟨', r'\rangle': '⟩',
+        r'\otimes': '⊗', r'\oplus': '⊕', r'\dagger': '†',
+        r'\in': '∈', r'\notin': '∉', r'\subset': '⊂', r'\supset': '⊃',
+        r'\cap': '∩', r'\cup': '∪', r'\forall': '∀', r'\exists': '∃',
+        # 特殊
+        r'\ket': '|⟩', r'\bra': '⟨|',
+    }
+
+    # 上付き文字の対応表
+    superscript_map = {
+        '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
+        '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹',
+        '+': '⁺', '-': '⁻', '=': '⁼', '(': '⁽', ')': '⁾',
+        'n': 'ⁿ', 'i': 'ⁱ',
+    }
+
+    # 下付き文字の対応表
+    subscript_map = {
+        '0': '₀', '1': '₁', '2': '₂', '3': '₃', '4': '₄',
+        '5': '₅', '6': '₆', '7': '₇', '8': '₈', '9': '₉',
+        '+': '₊', '-': '₋', '=': '₌', '(': '₍', ')': '₎',
+        'a': 'ₐ', 'e': 'ₑ', 'o': 'ₒ', 'x': 'ₓ',
+        'i': 'ᵢ', 'j': 'ⱼ', 'k': 'ₖ', 'n': 'ₙ', 'p': 'ₚ',
+    }
+
+    def convert_super_sub(match):
+        """上付き・下付き文字を変換"""
+        content = match.group(1)
+        is_super = match.group(0).startswith('^')
+        char_map = superscript_map if is_super else subscript_map
+
+        # 中括弧を除去
+        content = content.strip('{}')
+
+        result = ''
+        for char in content:
+            result += char_map.get(char, char)
+        return result
+
+    def process_latex_content(latex_str):
+        """LaTeX内容を処理"""
+        result = latex_str
+
+        # LaTeXコマンドを変換
+        for latex_cmd, unicode_char in latex_to_unicode.items():
+            result = result.replace(latex_cmd, unicode_char)
+
+        # 上付き文字: ^{...} または ^x
+        result = re.sub(r'\^{([^}]+)}', convert_super_sub, result)
+        result = re.sub(r'\^([0-9a-zA-Z])', convert_super_sub, result)
+
+        # 下付き文字: _{...} または _x
+        result = re.sub(r'_{([^}]+)}', convert_super_sub, result)
+        result = re.sub(r'_([0-9a-zA-Z])', convert_super_sub, result)
+
+        # \frac{a}{b} → a/b
+        result = re.sub(r'\\frac{([^}]+)}{([^}]+)}', r'\1/\2', result)
+
+        # \sqrt{x} → √x
+        result = re.sub(r'\\sqrt{([^}]+)}', r'√\1', result)
+
+        # \text{...} → ...
+        result = re.sub(r'\\text{([^}]+)}', r'\1', result)
+
+        # \mathrm{...} → ...
+        result = re.sub(r'\\mathrm{([^}]+)}', r'\1', result)
+
+        # 残った中括弧を除去
+        result = result.replace('{', '').replace('}', '')
+
+        # 残ったバックスラッシュを除去
+        result = re.sub(r'\\([a-zA-Z]+)', r'\1', result)
+
+        return result.strip()
+
+    # $...$ 形式のLaTeX数式を変換
+    result = re.sub(r'\$([^$]+)\$', lambda m: process_latex_content(m.group(1)), text)
+
+    # \(...\) 形式のLaTeX数式を変換
+    result = re.sub(r'\\\(([^)]+)\\\)', lambda m: process_latex_content(m.group(1)), result)
+
+    # \[...\] 形式のLaTeX数式を変換
+    result = re.sub(r'\\\[([^\]]+)\\\]', lambda m: process_latex_content(m.group(1)), result)
+
+    return result
+
+
 # ===== Scirateトップページから論文を取得 =====
 def get_top_papers_from_scirate(category: str, top_n: int = 10) -> List[Dict]:
     """
@@ -520,6 +638,8 @@ Summary:"""
             if hasattr(response, 'text') and response.text:
                 summary = response.text.strip()
                 if summary:
+                    # LaTeX記法をUnicodeに変換
+                    summary = convert_latex_to_unicode(summary)
                     # キャッシュに保存
                     summary_cache.set(arxiv_id, abstract, summary)
                     return summary
@@ -627,6 +747,8 @@ Format: [Paper number] Summary content
                     if 0 <= num < len(uncached_papers):
                         paper = uncached_papers[num]
                         clean_summary = summary.strip()
+                        # LaTeX記法をUnicodeに変換
+                        clean_summary = convert_latex_to_unicode(clean_summary)
                         summaries[paper['arxiv_id']] = clean_summary
                         summary_cache.set(paper['arxiv_id'], paper.get('abstract', ''), clean_summary)
 
