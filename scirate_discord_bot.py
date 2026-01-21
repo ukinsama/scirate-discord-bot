@@ -27,7 +27,20 @@ import json
 import hashlib
 import logging
 from pathlib import Path
+import argparse
 import google.generativeai as genai
+
+# ===== ドライランモード =====
+DRY_RUN = False  # グローバルフラグ（コマンドライン引数で設定）
+
+# ===== 平日チェック =====
+def is_weekday() -> bool:
+    """
+    今日が平日（月〜金）かどうかをチェック
+    土曜=5, 日曜=6
+    """
+    return datetime.now().weekday() < 5
+
 
 # ===== ログ設定 =====
 logging.basicConfig(
@@ -260,6 +273,94 @@ class APIUsageTracker:
 usage_tracker = APIUsageTracker()
 
 
+# ===== 投稿済み論文トラッキング =====
+class PostedPapersTracker:
+    """
+    投稿済み論文IDを記録し、重複投稿を防ぐクラス
+    """
+    def __init__(self):
+        self.posted_file = CACHE_DIR / "posted_papers.json"
+        self.posted = self._load_posted()
+
+    def _load_posted(self) -> Dict:
+        """投稿済みデータを読み込み"""
+        CACHE_DIR.mkdir(exist_ok=True)
+        if self.posted_file.exists():
+            try:
+                with open(self.posted_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except Exception:
+                pass
+        return {'papers': {}, 'last_date': None}
+
+    def _save_posted(self):
+        """投稿済みデータを保存"""
+        try:
+            with open(self.posted_file, 'w', encoding='utf-8') as f:
+                json.dump(self.posted, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.warning(f"投稿済みデータ保存エラー: {e}")
+
+    def is_posted(self, arxiv_id: str) -> bool:
+        """この論文が過去30日以内に投稿済みかチェック"""
+        if arxiv_id not in self.posted['papers']:
+            return False
+
+        # 30日以上前の投稿は重複とみなさない
+        posted_date = datetime.fromisoformat(self.posted['papers'][arxiv_id])
+        if (datetime.now() - posted_date).days > 30:
+            return False
+
+        return True
+
+    def mark_as_posted(self, arxiv_id: str):
+        """論文を投稿済みとしてマーク"""
+        self.posted['papers'][arxiv_id] = datetime.now().isoformat()
+        self.posted['last_date'] = datetime.now().strftime('%Y-%m-%d')
+        self._save_posted()
+        logger.info(f"投稿済みとしてマーク: {arxiv_id}")
+
+    def filter_new_papers(self, papers: List[Dict]) -> List[Dict]:
+        """投稿済みの論文をフィルタリングして、新規論文のみを返す"""
+        new_papers = []
+        skipped = 0
+
+        for paper in papers:
+            if self.is_posted(paper['arxiv_id']):
+                logger.info(f"スキップ（投稿済み）: {paper['arxiv_id']}")
+                skipped += 1
+            else:
+                new_papers.append(paper)
+
+        if skipped > 0:
+            logger.info(f"{skipped}件の論文をスキップしました（過去30日以内に投稿済み）")
+
+        return new_papers
+
+    def cleanup_old_entries(self, days: int = 60):
+        """古いエントリを削除（60日以上前）"""
+        cutoff = datetime.now()
+        removed = 0
+
+        papers_to_remove = []
+        for arxiv_id, posted_date_str in self.posted['papers'].items():
+            posted_date = datetime.fromisoformat(posted_date_str)
+            if (cutoff - posted_date).days > days:
+                papers_to_remove.append(arxiv_id)
+
+        for arxiv_id in papers_to_remove:
+            del self.posted['papers'][arxiv_id]
+            removed += 1
+
+        if removed > 0:
+            self._save_posted()
+            logger.info(f"{removed}件の古いエントリを削除しました")
+
+
+# グローバル投稿済みトラッカー
+posted_tracker = PostedPapersTracker()
+
+
 # ===== LaTeX→Unicode変換 =====
 def convert_latex_to_unicode(text: str) -> str:
     """
@@ -382,10 +483,17 @@ def convert_latex_to_unicode(text: str) -> str:
 def get_top_papers_from_scirate(category: str, top_n: int = 10) -> List[Dict]:
     """
     Scirateのトップページから、scites順の論文を取得
+    日付指定なしでアクセスし、Scirateが表示する最新の論文を取得
+
+    Args:
+        category: arXivカテゴリ（例: quant-ph）
+        top_n: 取得する論文数
     """
     logger.info(f"Scirate {category}カテゴリのトップページから論文を取得中...")
 
+    # 日付指定なしでアクセス（Scirateが最新の利用可能な日付を自動表示）
     url = f"https://scirate.com/arxiv/{category}"
+    logger.info(f"アクセスURL: {url}")
 
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
@@ -581,6 +689,9 @@ def generate_summary(title: str, abstract: str, arxiv_id: str, language: str = "
         prompt = f"""以下の論文を2-3文の日本語で簡潔に要約してください。
 
 【重要な指示】
+- 具体的な主語（手法名、対象、提案内容など）から始めてください
+- 悪い例: 「は、〜を提案している」「この研究では」「本研究では」
+- 良い例: 「トラップドイオンと自由電子を結合させる新手法を提案。」「量子誤り訂正符号の新しい構成法を示した。」
 - 専門用語は残しつつ、何を研究したかが分かるように説明してください
 - 数式はLaTeXではなく、Discordで読める形式で表記してください
   例: μ_c², P_{{11→11}}(E), Δt(E), φ⁴, ⟨ψ|H|ψ⟩
@@ -703,6 +814,9 @@ def generate_batch_summaries(papers: List[Dict], language: str = "ja") -> Dict[s
 
 【重要な指示】
 - 各論文の要約を「[論文番号] 要約内容」の形式で出力してください
+- 具体的な主語（手法名、対象、提案内容など）から始めてください
+- 悪い例: 「は、〜を提案している」「この研究では」「本研究では」
+- 良い例: 「トラップドイオンと自由電子を結合させる新手法を提案。」
 - 専門用語は残しつつ、何を研究したかが分かるように説明してください
 - 数式はDiscordで読める形式で表記してください
 
@@ -862,39 +976,127 @@ def post_to_discord(papers: List[Dict], language: str = "ja", use_batch: bool = 
 
 
 # ===== メイン処理 =====
-def main():
+def main(dry_run: bool = False, force_weekday: bool = False):
+    """
+    メイン処理
+
+    Args:
+        dry_run: Trueの場合、Discord投稿とGemini API呼び出しをスキップ
+        force_weekday: Trueの場合、土日でも実行
+    """
+    global DRY_RUN
+    DRY_RUN = dry_run
+
     logger.info("=" * 60)
-    logger.info("Scirate Discord Bot 起動 (Gemini API 改善版)")
+    if dry_run:
+        logger.info("Scirate Discord Bot 起動 [ドライランモード]")
+    else:
+        logger.info("Scirate Discord Bot 起動 (Gemini API 改善版)")
     logger.info("=" * 60)
+
+    # 平日チェック（土日はスキップ、ただしforce_weekdayがTrueなら実行）
+    if not is_weekday() and not force_weekday:
+        weekday_name = ['月', '火', '水', '木', '金', '土', '日'][datetime.now().weekday()]
+        logger.info(f"今日は{weekday_name}曜日です。平日のみ実行のためスキップします。")
+        logger.info("（土日でもテストしたい場合は --force-weekday オプションを使用）")
+        return
+
+    if not is_weekday() and force_weekday:
+        weekday_name = ['月', '火', '水', '木', '金', '土', '日'][datetime.now().weekday()]
+        logger.info(f"今日は{weekday_name}曜日ですが、--force-weekday により実行します。")
+
+    # 古いエントリをクリーンアップ
+    posted_tracker.cleanup_old_entries()
 
     # キャッシュ統計を表示
     cache_stats = summary_cache.get_stats()
     logger.info(f"キャッシュ: {cache_stats['total_entries']}件のエントリ")
 
-    # 1. Scirateトップページから論文を取得
+    # 1. Scirateトップページから論文を取得（最新の利用可能な日付を自動使用）
     papers = get_top_papers_from_scirate(ARXIV_CATEGORY, TOP_N_PAPERS)
 
     if not papers:
         logger.error("論文が見つかりませんでした")
         return
 
-    logger.info(f"投稿する論文（Top {len(papers)}）:")
+    logger.info(f"取得した論文: {len(papers)}件")
+
+    # 2. 投稿済みの論文をフィルタリング
+    papers = posted_tracker.filter_new_papers(papers)
+
+    if not papers:
+        logger.info("新規の論文がありませんでした（すべて投稿済み）")
+        return
+
+    logger.info(f"投稿する論文（新規 {len(papers)}件）:")
     for i, paper in enumerate(papers, 1):
         logger.info(f"  {i}. [{paper['scites']} scites] {paper['arxiv_id']} - {paper['title'][:60]}...")
 
-    # 2. 各論文のAbstractを取得
+    # 3. 各論文のAbstractを取得
     papers = enrich_papers_with_abstracts(papers)
 
-    # 3. Discordに投稿（バッチモードを使用してRPD節約）
-    post_to_discord(papers, SUMMARY_LANGUAGE, use_batch=True)
+    if dry_run:
+        # ドライランモード: Discord投稿とGemini APIをスキップ
+        logger.info("")
+        logger.info("=" * 60)
+        logger.info("[ドライラン] 以下の論文が投稿される予定です:")
+        logger.info("=" * 60)
+        for i, paper in enumerate(papers, 1):
+            logger.info(f"\n{i}. {paper['title']}")
+            logger.info(f"   arXiv: {paper['arxiv_id']}")
+            logger.info(f"   Scites: {paper['scites']}")
+            if paper['authors']:
+                authors = ', '.join(paper['authors'][:3])
+                if len(paper['authors']) > 3:
+                    authors += ' et al.'
+                logger.info(f"   著者: {authors}")
+            if paper.get('abstract'):
+                logger.info(f"   Abstract: {paper['abstract'][:150]}...")
+        logger.info("")
+        logger.info("[ドライラン] Discord投稿とGemini API呼び出しはスキップされました")
+        logger.info("[ドライラン] 投稿済みマークもスキップされました")
+    else:
+        # 通常モード: Discordに投稿
+        # 4. Discordに投稿（バッチモードを使用してRPD節約）
+        post_to_discord(papers, SUMMARY_LANGUAGE, use_batch=True)
 
-    # API使用量サマリーを表示
-    usage_tracker.print_summary()
+        # 5. 投稿した論文をマーク
+        for paper in papers:
+            posted_tracker.mark_as_posted(paper['arxiv_id'])
+
+        # API使用量サマリーを表示
+        usage_tracker.print_summary()
 
     logger.info("=" * 60)
     logger.info("すべての処理が完了しました！")
     logger.info("=" * 60)
 
 
+def parse_args():
+    """コマンドライン引数をパース"""
+    parser = argparse.ArgumentParser(
+        description='Scirate Discord Bot - quant-ph人気論文をDiscordに投稿',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog='''
+使用例:
+  python scirate_discord_bot.py                    # 通常実行
+  python scirate_discord_bot.py --dry-run          # ドライラン（投稿しない）
+  python scirate_discord_bot.py --dry-run --force-weekday  # 土日でもドライラン
+        '''
+    )
+    parser.add_argument(
+        '--dry-run',
+        action='store_true',
+        help='Discord投稿とGemini API呼び出しをスキップ（テスト用）'
+    )
+    parser.add_argument(
+        '--force-weekday',
+        action='store_true',
+        help='土日でも実行（テスト用）'
+    )
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    main()
+    args = parse_args()
+    main(dry_run=args.dry_run, force_weekday=args.force_weekday)
