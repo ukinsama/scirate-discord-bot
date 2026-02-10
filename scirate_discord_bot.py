@@ -163,7 +163,7 @@ class SummaryCache:
 
     def _generate_key(self, arxiv_id: str, abstract: str) -> str:
         """キャッシュキーを生成"""
-        content = f"{arxiv_id}:{abstract[:200]}"
+        content = f"{arxiv_id}:{(abstract or '')[:200]}"
         return hashlib.md5(content.encode()).hexdigest()
 
     def get(self, arxiv_id: str, abstract: str) -> Optional[str]:
