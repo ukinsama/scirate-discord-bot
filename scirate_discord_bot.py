@@ -489,19 +489,22 @@ def convert_latex_to_unicode(text: str) -> str:
 
 
 # ===== Scirateトップページから論文を取得 =====
-def get_top_papers_from_scirate(category: str, top_n: int = 10) -> List[Dict]:
+def get_top_papers_from_scirate(category: str, top_n: int = 10, date: Optional[str] = None) -> List[Dict]:
     """
     Scirateのトップページから、scites順の論文を取得
-    日付指定なしでアクセスし、Scirateが表示する最新の論文を取得
 
     Args:
         category: arXivカテゴリ（例: quant-ph）
         top_n: 取得する論文数
+        date: 日付指定（例: 2026-03-02）。Noneの場合は最新
     """
-    logger.info(f"Scirate {category}カテゴリのトップページから論文を取得中...")
+    date_msg = f"（日付: {date}）" if date else "（最新）"
+    logger.info(f"Scirate {category}カテゴリの論文を取得中... {date_msg}")
 
-    # 日付指定なしでアクセス（Scirateが最新の利用可能な日付を自動表示）
+    # 日付指定がある場合はクエリパラメータを付与
     url = f"https://scirate.com/arxiv/{category}"
+    if date:
+        url += f"?date={date}"
     logger.info(f"アクセスURL: {url}")
 
     # ブラウザに近いヘッダーでBot検知を回避
@@ -509,7 +512,7 @@ def get_top_papers_from_scirate(category: str, top_n: int = 10) -> List[Dict]:
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.9',
-        'Accept-Encoding': 'gzip, deflate, br',
+        'Accept-Encoding': 'gzip, deflate',
         'Connection': 'keep-alive',
         'Upgrade-Insecure-Requests': '1',
         'Sec-Fetch-Dest': 'document',
@@ -526,7 +529,7 @@ def get_top_papers_from_scirate(category: str, top_n: int = 10) -> List[Dict]:
             logger.error(f"Scirateからの取得に失敗 (status: {response.status_code})")
             return []
 
-        soup = BeautifulSoup(response.content, 'html.parser')
+        soup = BeautifulSoup(response.text, 'html.parser')
 
         papers = []
 
@@ -1000,13 +1003,14 @@ def post_to_discord(papers: List[Dict], language: str = "ja", use_batch: bool = 
 
 
 # ===== メイン処理 =====
-def main(dry_run: bool = False, force_weekday: bool = False):
+def main(dry_run: bool = False, force_weekday: bool = False, date: Optional[str] = None):
     """
     メイン処理
 
     Args:
         dry_run: Trueの場合、Discord投稿とGemini API呼び出しをスキップ
         force_weekday: Trueの場合、土日でも実行
+        date: 日付指定（例: 2026-03-02）。指定時は平日チェックをスキップ
     """
     global DRY_RUN
     DRY_RUN = dry_run
@@ -1018,8 +1022,12 @@ def main(dry_run: bool = False, force_weekday: bool = False):
         logger.info("Scirate Discord Bot 起動 (Gemini API 改善版)")
     logger.info("=" * 60)
 
-    # 平日チェック（土日はスキップ、ただしforce_weekdayがTrueなら実行）
-    if not is_weekday() and not force_weekday:
+    # 日付指定がある場合は表示
+    if date:
+        logger.info(f"日付指定モード: {date}")
+
+    # 平日チェック（土日はスキップ、ただしforce_weekdayまたはdate指定時は実行）
+    if not is_weekday() and not force_weekday and not date:
         weekday_name = ['月', '火', '水', '木', '金', '土', '日'][datetime.now().weekday()]
         logger.info(f"今日は{weekday_name}曜日です。平日のみ実行のためスキップします。")
         logger.info("（土日でもテストしたい場合は --force-weekday オプションを使用）")
@@ -1036,8 +1044,8 @@ def main(dry_run: bool = False, force_weekday: bool = False):
     cache_stats = summary_cache.get_stats()
     logger.info(f"キャッシュ: {cache_stats['total_entries']}件のエントリ")
 
-    # 1. Scirateトップページから論文を取得（最新の利用可能な日付を自動使用）
-    papers = get_top_papers_from_scirate(ARXIV_CATEGORY, TOP_N_PAPERS)
+    # 1. Scirateから論文を取得（日付指定がある場合はその日付を使用）
+    papers = get_top_papers_from_scirate(ARXIV_CATEGORY, TOP_N_PAPERS, date=date)
 
     if not papers:
         logger.error("論文が見つかりませんでした")
@@ -1106,6 +1114,8 @@ def parse_args():
   python scirate_discord_bot.py                    # 通常実行
   python scirate_discord_bot.py --dry-run          # ドライラン（投稿しない）
   python scirate_discord_bot.py --dry-run --force-weekday  # 土日でもドライラン
+  python scirate_discord_bot.py --date 2026-03-02  # 特定日付の論文を投稿
+  python scirate_discord_bot.py --date 2026-03-02 --dry-run  # 特定日付をドライラン
         '''
     )
     parser.add_argument(
@@ -1118,9 +1128,15 @@ def parse_args():
         action='store_true',
         help='土日でも実行（テスト用）'
     )
+    parser.add_argument(
+        '--date',
+        type=str,
+        default=None,
+        help='特定の日付の論文を取得（例: 2026-03-02）'
+    )
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
-    main(dry_run=args.dry_run, force_weekday=args.force_weekday)
+    main(dry_run=args.dry_run, force_weekday=args.force_weekday, date=args.date)
