@@ -65,18 +65,8 @@ SUMMARY_LANGUAGE = "ja"  # 要約言語 (ja=日本語, en=英語)
 CACHE_DIR = Path("cache")
 CACHE_EXPIRY_HOURS = 24  # キャッシュの有効期限（時間）
 
-# モデル優先順位（新しいモデルから順に試行）
+# モデル優先順位（コスト効率の良いモデルから順に試行）
 MODEL_PRIORITY = [
-    {
-        'name': 'gemini-3.1-flash-lite',
-        'rpm': 15,
-        'description': '3.1 Lite版（プレビュー）'
-    },
-    {
-        'name': 'gemini-3-flash',
-        'rpm': 10,
-        'description': '3 Flash（プレビュー）'
-    },
     {
         'name': 'gemini-2.5-flash-lite',
         'rpm': 15,
