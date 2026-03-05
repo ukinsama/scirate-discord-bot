@@ -1,0 +1,7 @@
+[build]
+builder = "RAILPACK"
+
+[deploy]
+# UTC 23:45 月〜金（GitHub Actionsと同じスケジュール）
+cronSchedule = "45 23 * * 0-4"
+startCommand = "python scirate_discord_bot.py"
