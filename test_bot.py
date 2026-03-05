@@ -64,7 +64,7 @@ def main():
 
         # 要約生成
         print(f"\n🤖 要約生成中...")
-        summary = generate_summary(paper['title'], paper.get('abstract', ''), SUMMARY_LANGUAGE)
+        summary = generate_summary(paper['title'], paper.get('abstract', ''), paper['arxiv_id'], SUMMARY_LANGUAGE)
         print(f"\n📝 要約:\n{summary}")
 
     print("\n" + "=" * 60)

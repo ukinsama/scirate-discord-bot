@@ -28,7 +28,7 @@ import hashlib
 import logging
 from pathlib import Path
 import argparse
-import google.generativeai as genai
+from google import genai
 
 # ===== ドライランモード =====
 DRY_RUN = False  # グローバルフラグ（コマンドライン引数で設定）
@@ -65,23 +65,32 @@ SUMMARY_LANGUAGE = "ja"  # 要約言語 (ja=日本語, en=英語)
 CACHE_DIR = Path("cache")
 CACHE_EXPIRY_HOURS = 24  # キャッシュの有効期限（時間）
 
-# モデル優先順位
+# モデル優先順位（新しいモデルから順に試行）
 MODEL_PRIORITY = [
     {
-        'name': 'gemini-2.5-flash-lite',
+        'name': 'gemini-3.1-flash-lite',
+        'rpm': 15,
+        'description': '3.1 Lite版（プレビュー）'
+    },
+    {
+        'name': 'gemini-3-flash',
         'rpm': 10,
-        'description': 'Lite版 - RPD: 20/日'
+        'description': '3 Flash（プレビュー）'
+    },
+    {
+        'name': 'gemini-2.5-flash-lite',
+        'rpm': 15,
+        'description': '2.5 Lite版 - RPD: 1000/日'
     },
     {
         'name': 'gemini-2.5-flash',
-        'rpm': 5,
-        'description': '標準版 - RPD: 20/日'
+        'rpm': 10,
+        'description': '2.5 Flash - RPD: 250/日'
     },
 ]
 
-# Gemini APIを初期化
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
+# Gemini APIクライアントを初期化
+gemini_client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 
 
 # ===== レート制限管理クラス =====
@@ -677,7 +686,7 @@ def generate_summary(title: str, abstract: str, arxiv_id: str, language: str = "
     if not abstract:
         return "Abstractが取得できませんでした。"
 
-    if not GEMINI_API_KEY:
+    if not gemini_client:
         return "Gemini APIキーが設定されていません。"
 
     # キャッシュをチェック
@@ -723,8 +732,10 @@ Summary:"""
             rate_limiter.wait_if_needed()
 
             logger.info(f"   Using model: {model_name} (RPM: {model_info['rpm']})")
-            model = genai.GenerativeModel(model_name)
-            response = model.generate_content(prompt)
+            response = gemini_client.models.generate_content(
+                model=model_name,
+                contents=prompt
+            )
 
             # 使用量を記録
             usage_tracker.record(model_name)
@@ -788,7 +799,7 @@ def generate_batch_summaries(papers: List[Dict], language: str = "ja") -> Dict[s
     """
     logger.info(f"バッチ要約生成中 ({len(papers)}件)...")
 
-    if not GEMINI_API_KEY:
+    if not gemini_client:
         return {p['arxiv_id']: "Gemini APIキーが設定されていません。" for p in papers}
 
     # キャッシュ済みの論文を除外
@@ -842,8 +853,10 @@ Format: [Paper number] Summary content
             rate_limiter.wait_if_needed()
 
             logger.info(f"   バッチ処理に {model_name} を使用")
-            model = genai.GenerativeModel(model_name)
-            response = model.generate_content(prompt)
+            response = gemini_client.models.generate_content(
+                model=model_name,
+                contents=prompt
+            )
 
             usage_tracker.record(model_name)
 
