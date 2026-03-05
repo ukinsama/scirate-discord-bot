@@ -907,7 +907,7 @@ Format: [Paper number] Summary content
 
 
 # ===== Discordに投稿 =====
-def post_to_discord(papers: List[Dict], language: str = "ja", use_batch: bool = False):
+def post_to_discord(papers: List[Dict], language: str = "ja", use_batch: bool = False, date: Optional[str] = None):
     """
     論文リストをDiscordに投稿
     """
@@ -918,12 +918,17 @@ def post_to_discord(papers: List[Dict], language: str = "ja", use_batch: bool = 
     if use_batch:
         summaries = generate_batch_summaries(papers, language)
 
-    # ヘッダーメッセージ（SciRateのURLを含む）
-    today_str = datetime.now().strftime("%Y年%m月%d日")
-    if language == "ja":
-        header = f"## {today_str} の quant-ph 人気論文 Top {len(papers)}\n\n**SciRate**: https://scirate.com/?range=1\n"
+    # ヘッダーメッセージ（日付指定がある場合はその日付を使用）
+    if date:
+        # YYYY-MM-DD → YYYY年MM月DD日
+        parts = date.split('-')
+        date_str = f"{parts[0]}年{parts[1]}月{parts[2]}日"
     else:
-        header = f"## Top {len(papers)} quant-ph Papers - {datetime.now().strftime('%Y-%m-%d')}\n\n**SciRate**: https://scirate.com/?range=1\n"
+        date_str = datetime.now().strftime("%Y年%m月%d日")
+    if language == "ja":
+        header = f"## {date_str} の quant-ph 人気論文 Top {len(papers)}\n\n**SciRate**: https://scirate.com/?range=1\n"
+    else:
+        header = f"## Top {len(papers)} quant-ph Papers - {date or datetime.now().strftime('%Y-%m-%d')}\n\n**SciRate**: https://scirate.com/?range=1\n"
 
     message = {
         "content": header
@@ -1080,7 +1085,7 @@ def main(dry_run: bool = False, force_weekday: bool = False, date: Optional[str]
     else:
         # 通常モード: Discordに投稿
         # 4. Discordに投稿（バッチモードを使用してRPD節約）
-        post_to_discord(papers, SUMMARY_LANGUAGE, use_batch=True)
+        post_to_discord(papers, SUMMARY_LANGUAGE, use_batch=True, date=date)
 
         # 5. 投稿した論文をマーク
         for paper in papers:
