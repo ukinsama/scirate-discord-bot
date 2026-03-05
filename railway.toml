@@ -2,6 +2,6 @@
 builder = "NIXPACKS"
 
 [deploy]
-# UTC 23:45 月〜金（GitHub Actionsと同じスケジュール）
-cronSchedule = "45 23 * * 0-4"
+# UTC 0:05 月〜金（日本時間 9:05）
+cronSchedule = "5 0 * * 1-5"
 startCommand = "python scirate_discord_bot.py"
