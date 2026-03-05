@@ -12,4 +12,5 @@ files/
 *.py[cod]
 *$py.class
 venv/
+.venv/
 .env
