@@ -31,7 +31,6 @@ import argparse
 from google import genai
 
 # ===== ドライランモード =====
-DRY_RUN = False  # グローバルフラグ（コマンドライン引数で設定）
 
 # ===== 平日チェック =====
 def is_weekday() -> bool:
@@ -112,6 +111,7 @@ class RateLimiter:
                 time.sleep(wait_time)
                 self.request_count = 0
                 self.minute_start = time.time()
+                current_time = time.time()  # 待機後に現在時刻を再取得
 
         # 最小間隔を確保
         elapsed = current_time - self.last_request_time
@@ -430,6 +430,29 @@ def convert_latex_to_unicode(text: str) -> str:
             result += char_map.get(char, char)
         return result
 
+    # \mathcal{X} → Unicode数学筆記体
+    mathcal_map = {
+        'A': '𝒜', 'B': 'ℬ', 'C': '𝒞', 'D': '𝒟', 'E': 'ℰ', 'F': 'ℱ',
+        'G': '𝒢', 'H': 'ℋ', 'I': 'ℐ', 'J': '𝒥', 'K': '𝒦', 'L': 'ℒ',
+        'M': 'ℳ', 'N': '𝒩', 'O': '𝒪', 'P': '𝒫', 'Q': '𝒬', 'R': 'ℛ',
+        'S': '𝒮', 'T': '𝒯', 'U': '𝒰', 'V': '𝒱', 'W': '𝒲', 'X': '𝒳',
+        'Y': '𝒴', 'Z': '𝒵',
+    }
+
+    # \mathbb{X} → Unicode黒板太字
+    mathbb_map = {
+        'A': '𝔸', 'B': '𝔹', 'C': 'ℂ', 'D': '𝔻', 'E': '𝔼', 'F': '𝔽',
+        'G': '𝔾', 'H': 'ℍ', 'I': '𝕀', 'J': '𝕁', 'K': '𝕂', 'L': '𝕃',
+        'M': '𝕄', 'N': 'ℕ', 'O': '𝕆', 'P': 'ℙ', 'Q': 'ℚ', 'R': 'ℝ',
+        'S': '𝕊', 'T': '𝕋', 'U': '𝕌', 'V': '𝕍', 'W': '𝕎', 'X': '𝕏',
+        'Y': '𝕐', 'Z': 'ℤ',
+    }
+
+    def convert_mathfont(match, char_map):
+        """数学フォントコマンドを変換"""
+        content = match.group(1)
+        return ''.join(char_map.get(c, c) for c in content)
+
     def process_latex_content(latex_str):
         """LaTeX内容を処理"""
         result = latex_str
@@ -437,6 +460,30 @@ def convert_latex_to_unicode(text: str) -> str:
         # LaTeXコマンドを変換
         for latex_cmd, unicode_char in latex_to_unicode.items():
             result = result.replace(latex_cmd, unicode_char)
+
+        # \mathcal{...} → Unicode筆記体
+        result = re.sub(r'\\mathcal{([^}]+)}', lambda m: convert_mathfont(m, mathcal_map), result)
+
+        # \mathbb{...} → Unicode黒板太字
+        result = re.sub(r'\\mathbb{([^}]+)}', lambda m: convert_mathfont(m, mathbb_map), result)
+
+        # \widetilde{...} / \tilde{...} → x̃ (チルダ結合文字)
+        result = re.sub(r'\\(?:widetilde|tilde){([^}]+)}', lambda m: m.group(1) + '\u0303', result)
+
+        # \hat{...} → x̂ (ハット結合文字)
+        result = re.sub(r'\\hat{([^}]+)}', lambda m: m.group(1) + '\u0302', result)
+
+        # \bar{...} / \overline{...} → x̄ (バー結合文字)
+        result = re.sub(r'\\(?:bar|overline){([^}]+)}', lambda m: m.group(1) + '\u0304', result)
+
+        # \vec{...} → x⃗ (ベクトル結合文字)
+        result = re.sub(r'\\vec{([^}]+)}', lambda m: m.group(1) + '\u20D7', result)
+
+        # \dot{...} → ẋ (ドット結合文字)
+        result = re.sub(r'\\dot{([^}]+)}', lambda m: m.group(1) + '\u0307', result)
+
+        # \mathbf{...} / \boldsymbol{...} → そのまま（Unicodeボールド省略）
+        result = re.sub(r'\\(?:mathbf|boldsymbol){([^}]+)}', r'\1', result)
 
         # 上付き文字: ^{...} または ^x
         result = re.sub(r'\^{([^}]+)}', convert_super_sub, result)
@@ -642,39 +689,51 @@ def enrich_papers_with_abstracts(papers: List[Dict]) -> List[Dict]:
             'User-Agent': 'Mozilla/5.0 (compatible; ScirateBot/1.0)'
         }
 
-        try:
-            response = requests.get(base_url, params=params, headers=headers, timeout=10)
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(base_url, params=params, headers=headers, timeout=15)
 
-            if response.status_code == 200:
-                root = ET.fromstring(response.content)
-                ns = {'atom': 'http://www.w3.org/2005/Atom'}
+                if response.status_code == 200:
+                    root = ET.fromstring(response.content)
+                    ns = {'atom': 'http://www.w3.org/2005/Atom'}
 
-                entry = root.find('atom:entry', ns)
-                if entry is not None:
-                    # Abstract
-                    abstract_elem = entry.find('atom:summary', ns)
-                    if abstract_elem is not None:
-                        paper['abstract'] = abstract_elem.text.strip().replace('\n', ' ')
+                    entry = root.find('atom:entry', ns)
+                    if entry is not None:
+                        # Abstract
+                        abstract_elem = entry.find('atom:summary', ns)
+                        if abstract_elem is not None:
+                            paper['abstract'] = abstract_elem.text.strip().replace('\n', ' ')
 
-                    # タイトル（Scirateから正しく取れなかった場合）
-                    if paper['title'] == "タイトル不明":
-                        title_elem = entry.find('atom:title', ns)
-                        if title_elem is not None:
-                            paper['title'] = title_elem.text.strip().replace('\n', ' ')
+                        # タイトル（Scirateから正しく取れなかった場合）
+                        if paper['title'] == "タイトル不明":
+                            title_elem = entry.find('atom:title', ns)
+                            if title_elem is not None:
+                                paper['title'] = title_elem.text.strip().replace('\n', ' ')
 
-                    # 著者（Scirateから取れなかった場合）
-                    if not paper['authors']:
-                        authors = []
-                        for author in entry.findall('atom:author', ns):
-                            name = author.find('atom:name', ns)
-                            if name is not None:
-                                authors.append(name.text)
-                        paper['authors'] = authors
+                        # 著者（Scirateから取れなかった場合）
+                        if not paper['authors']:
+                            authors = []
+                            for author in entry.findall('atom:author', ns):
+                                name = author.find('atom:name', ns)
+                                if name is not None:
+                                    authors.append(name.text)
+                            paper['authors'] = authors
 
-        except Exception as e:
-            logger.warning(f"エラー: {e}")
+                    break  # 成功したらリトライ不要
 
-        time.sleep(1)  # arXiv APIへの負荷を避ける
+                else:
+                    logger.warning(f"   arXiv API エラー (status: {response.status_code}), リトライ {attempt + 1}/{max_retries}")
+                    time.sleep(5 * (attempt + 1))  # 指数バックオフ
+
+            except Exception as e:
+                logger.warning(f"   arXiv API 例外: {e}, リトライ {attempt + 1}/{max_retries}")
+                time.sleep(5 * (attempt + 1))
+
+        if paper['abstract'] is None:
+            logger.error(f"   {paper['arxiv_id']} のAbstract取得に失敗（{max_retries}回リトライ後）")
+
+        time.sleep(3)  # arXiv APIの推奨間隔（3秒以上）
 
     logger.info("詳細情報取得完了")
     return papers
@@ -1007,9 +1066,6 @@ def main(dry_run: bool = False, force_weekday: bool = False, date: Optional[str]
         force_weekday: Trueの場合、土日でも実行
         date: 日付指定（例: 2026-03-02）。指定時は平日チェックをスキップ
     """
-    global DRY_RUN
-    DRY_RUN = dry_run
-
     logger.info("=" * 60)
     if dry_run:
         logger.info("Scirate Discord Bot 起動 [ドライランモード]")
@@ -1129,7 +1185,16 @@ def parse_args():
         default=None,
         help='特定の日付の論文を取得（例: 2026-03-02）'
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+
+    # --date のフォーマットバリデーション
+    if args.date:
+        try:
+            datetime.strptime(args.date, '%Y-%m-%d')
+        except ValueError:
+            parser.error(f"日付のフォーマットが不正です: '{args.date}' (正しい形式: YYYY-MM-DD)")
+
+    return args
 
 
 if __name__ == "__main__":
