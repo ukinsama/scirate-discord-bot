@@ -547,36 +547,46 @@ def get_top_papers_from_scirate(category: str, top_n: int = 10, date: Optional[s
         url += f"?date={date}"
     logger.info(f"アクセスURL: {url}")
 
-    # ブラウザに近いヘッダーでBot検知を回避
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Accept-Encoding': 'gzip, deflate',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
-        'Sec-Fetch-User': '?1',
-        'Cache-Control': 'max-age=0',
-    }
-
     try:
-        # 403対策: 複数回リトライ（Bot検知された場合に備えて待機を入れる）
-        response = None
-        for attempt in range(3):
-            response = requests.get(url, headers=headers, timeout=15)
-            if response.status_code == 200:
-                break
-            logger.warning(f"Scirateからの取得失敗 (status: {response.status_code}), リトライ {attempt + 1}/3")
-            time.sleep(10 * (attempt + 1))
+        # PlaywrightでCloudflare Bot Managementを通過してHTMLを取得
+        # （headlessでは検知されるため、headedモード+Xvfbで動作させる）
+        from playwright.sync_api import sync_playwright
 
-        if response is None or response.status_code != 200:
-            logger.error(f"Scirateからの取得に失敗 (status: {response.status_code if response else 'N/A'})")
+        html = None
+        for attempt in range(3):
+            try:
+                with sync_playwright() as p:
+                    browser = p.chromium.launch(
+                        headless=False,
+                        args=[
+                            '--disable-blink-features=AutomationControlled',
+                            '--no-sandbox',
+                            '--disable-dev-shm-usage',
+                        ]
+                    )
+                    try:
+                        context = browser.new_context(
+                            viewport={'width': 1280, 'height': 720},
+                            locale='en-US',
+                        )
+                        page = context.new_page()
+                        page.goto(url, wait_until='domcontentloaded', timeout=60000)
+                        # paperlist要素が現れるまで待機（Cloudflareチャレンジ通過後）
+                        page.wait_for_selector('div.paperlist ul.papers div.row', timeout=45000)
+                        html = page.content()
+                    finally:
+                        browser.close()
+                if html:
+                    break
+            except Exception as e:
+                logger.warning(f"Playwrightでの取得失敗 ({e}), リトライ {attempt + 1}/3")
+                time.sleep(5 * (attempt + 1))
+
+        if not html:
+            logger.error("Scirateからの取得に失敗（Playwright全リトライ失敗）")
             return [], None
 
-        soup = BeautifulSoup(response.text, 'html.parser')
+        soup = BeautifulSoup(html, 'html.parser')
 
         # Scirateが表示している日付を取得（"Prev day"リンクの日付+1日 or "Next day"リンクの日付-1日）
         scirate_date = date  # 日付指定がある場合はそのまま使う
