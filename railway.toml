@@ -5,4 +5,4 @@ dockerfilePath = "Dockerfile"
 [deploy]
 # UTC 23:50 日〜木（日本時間 8:50 月〜金）
 cronSchedule = "50 23 * * 0-4"
-startCommand = "xvfb-run --auto-servernum --server-args='-screen 0 1280x720x24' python scirate_discord_bot.py"
+# startCommandは指定しない（DockerfileのCMDを使う - JSON配列形式で引数の解釈が安定）

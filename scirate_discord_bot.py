@@ -555,6 +555,7 @@ def get_top_papers_from_scirate(category: str, top_n: int = 10, date: Optional[s
         html = None
         for attempt in range(3):
             try:
+                logger.info(f"   Playwright起動中... (試行 {attempt + 1}/3)")
                 with sync_playwright() as p:
                     browser = p.chromium.launch(
                         headless=False,
@@ -565,14 +566,18 @@ def get_top_papers_from_scirate(category: str, top_n: int = 10, date: Optional[s
                         ]
                     )
                     try:
+                        logger.info(f"   ブラウザ起動完了、ページ作成中...")
                         context = browser.new_context(
                             viewport={'width': 1280, 'height': 720},
                             locale='en-US',
                         )
                         page = context.new_page()
+                        logger.info(f"   ページにアクセス中: {url}")
                         page.goto(url, wait_until='domcontentloaded', timeout=60000)
+                        logger.info(f"   ページ読み込み完了、paperlist出現を待機中...")
                         # paperlist要素が現れるまで待機（Cloudflareチャレンジ通過後）
                         page.wait_for_selector('div.paperlist ul.papers div.row', timeout=45000)
+                        logger.info(f"   paperlist出現、HTML取得中...")
                         html = page.content()
                     finally:
                         browser.close()
