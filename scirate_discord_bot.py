@@ -1360,4 +1360,7 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
-    main(dry_run=args.dry_run, force_weekday=args.force_weekday, date=args.date)
+    # 環境変数によるオーバーライド（Railwayのcron実行で引数が渡せないため）
+    dry_run = args.dry_run or os.environ.get('DRY_RUN', '').lower() in ('1', 'true', 'yes')
+    force_weekday = args.force_weekday or os.environ.get('FORCE_WEEKDAY', '').lower() in ('1', 'true', 'yes')
+    main(dry_run=dry_run, force_weekday=force_weekday, date=args.date)
