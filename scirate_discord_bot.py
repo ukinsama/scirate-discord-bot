@@ -563,11 +563,18 @@ def get_top_papers_from_scirate(category: str, top_n: int = 10, date: Optional[s
     }
 
     try:
-        response = requests.get(url, headers=headers, timeout=15)
+        # 403対策: 複数回リトライ（Bot検知された場合に備えて待機を入れる）
+        response = None
+        for attempt in range(3):
+            response = requests.get(url, headers=headers, timeout=15)
+            if response.status_code == 200:
+                break
+            logger.warning(f"Scirateからの取得失敗 (status: {response.status_code}), リトライ {attempt + 1}/3")
+            time.sleep(10 * (attempt + 1))
 
-        if response.status_code != 200:
-            logger.error(f"Scirateからの取得に失敗 (status: {response.status_code})")
-            return []
+        if response is None or response.status_code != 200:
+            logger.error(f"Scirateからの取得に失敗 (status: {response.status_code if response else 'N/A'})")
+            return [], None
 
         soup = BeautifulSoup(response.text, 'html.parser')
 
@@ -605,13 +612,13 @@ def get_top_papers_from_scirate(category: str, top_n: int = 10, date: Optional[s
 
         if not paperlist:
             logger.error("paperlist要素が見つかりません")
-            return []
+            return [], scirate_date
 
         papers_ul = paperlist.find('ul', class_='papers')
 
         if not papers_ul:
             logger.error("ul.papers要素が見つかりません")
-            return []
+            return [], scirate_date
 
         # 各論文要素（div.row）を取得
         paper_rows = papers_ul.find_all('div', class_='row')
